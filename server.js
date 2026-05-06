@@ -1,7 +1,9 @@
 const express      = require('express');
 const cookieSession = require('cookie-session');
 const bcrypt       = require('bcryptjs');
+const archiver     = require('archiver');
 const path         = require('path');
+const fs           = require('fs');
 const db           = require('./db-server');
 
 const app  = express();
@@ -77,6 +79,50 @@ app.post('/api/sync', requireToken, (req, res) => {
   const accepted = db.syncMessages(req.syncUser.id, messages);
   console.log(`[sync] user=${req.syncUser.username} received=${messages.length} accepted=${accepted}`);
   res.json({ status: 'ok', accepted });
+});
+
+// ── Sync agent download ───────────────────────────────────────────────────────
+
+app.get('/api/download/sync-agent', requireSession, (req, res) => {
+  const user      = db.getUserById(req.session.userId);
+  const serverUrl = `${req.protocol}://${req.get('host')}`;
+
+  const config = JSON.stringify({ serverUrl, token: user.sync_token, lastSync: 0 }, null, 2);
+
+  const readme = `Smart Messages — Sync Agent
+===========================
+
+Your sync agent is pre-configured and ready to install.
+
+Steps:
+  1. Open Terminal (search "Terminal" in Spotlight, or Cmd+Space → type Terminal)
+  2. In Terminal, type:  bash  (with a space after it)
+  3. Drag "install.sh" from this folder into the Terminal window
+  4. Press Enter — choose how often to sync, and you're done!
+
+Messages will sync automatically in the background on every login.
+
+Troubleshoot:
+  tail -f /tmp/smartmessages-sync.log
+
+Uninstall:
+  bash uninstall.sh
+`;
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', 'attachment; filename="SmartMessages-SyncAgent.zip"');
+
+  const archive = archiver('zip', { zlib: { level: 9 } });
+  archive.pipe(res);
+
+  const agentDir = path.join(__dirname, 'sync-agent');
+  archive.file(path.join(agentDir, 'index.js'),     { name: 'SmartMessages-SyncAgent/index.js' });
+  archive.file(path.join(agentDir, 'install.sh'),   { name: 'SmartMessages-SyncAgent/install.sh' });
+  archive.file(path.join(agentDir, 'uninstall.sh'), { name: 'SmartMessages-SyncAgent/uninstall.sh' });
+  archive.append(config,  { name: 'SmartMessages-SyncAgent/config.json' });
+  archive.append(readme,  { name: 'SmartMessages-SyncAgent/README.txt' });
+
+  archive.finalize();
 });
 
 // ── Invites ───────────────────────────────────────────────────────────────────
