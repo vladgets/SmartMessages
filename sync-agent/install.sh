@@ -40,6 +40,21 @@ if [ -z "$SKIP_CONFIG" ]; then
     exit 1
   fi
 
+  echo ""
+  echo "How often should messages sync?"
+  echo "  1) Every 5 minutes"
+  echo "  2) Every 15 minutes"
+  echo "  3) Every 30 minutes"
+  echo "  4) Every hour"
+  read -r -p "Choose [1-4, default 1]: " INTERVAL_CHOICE
+
+  case "$INTERVAL_CHOICE" in
+    2) INTERVAL_SECONDS=900;  INTERVAL_LABEL="15 minutes" ;;
+    3) INTERVAL_SECONDS=1800; INTERVAL_LABEL="30 minutes" ;;
+    4) INTERVAL_SECONDS=3600; INTERVAL_LABEL="1 hour"     ;;
+    *) INTERVAL_SECONDS=300;  INTERVAL_LABEL="5 minutes"  ;;
+  esac
+
   cat > "$CONFIG_PATH" <<EOF
 {
   "serverUrl": "$SERVER_URL",
@@ -48,6 +63,16 @@ if [ -z "$SKIP_CONFIG" ]; then
 }
 EOF
   echo "Config written to $CONFIG_PATH"
+fi
+
+# Read interval from existing config if skipping config step
+if [ -n "$SKIP_CONFIG" ]; then
+  # Check if plist already exists to extract current interval
+  if [ -f "$PLIST_PATH" ]; then
+    INTERVAL_SECONDS=$(grep -A1 "StartInterval" "$PLIST_PATH" | grep integer | tr -cd '0-9')
+  fi
+  INTERVAL_SECONDS="${INTERVAL_SECONDS:-300}"
+  INTERVAL_LABEL="${INTERVAL_SECONDS} seconds"
 fi
 
 # Generate launchd plist
@@ -65,7 +90,7 @@ cat > "$PLIST_PATH" <<EOF
     <string>$AGENT_DIR/index.js</string>
   </array>
   <key>StartInterval</key>
-  <integer>300</integer>
+  <integer>$INTERVAL_SECONDS</integer>
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
@@ -81,8 +106,7 @@ launchctl unload "$PLIST_PATH" 2>/dev/null || true
 launchctl load "$PLIST_PATH"
 
 echo ""
-echo "Launchd agent installed and started."
-echo "It will run every 5 minutes and on every login."
+echo "Sync agent installed — running every $INTERVAL_LABEL."
 echo ""
 echo "Logs:"
 echo "  tail -f /tmp/smartmessages-sync.log"
@@ -92,5 +116,6 @@ echo "IMPORTANT: Node.js needs Full Disk Access to read your messages."
 echo "  System Settings → Privacy & Security → Full Disk Access → add Node.js"
 echo "  Node.js is usually at: $NODE_PATH"
 echo ""
-echo "To uninstall: bash $AGENT_DIR/uninstall.sh"
+echo "To change the interval: re-run this script."
+echo "To uninstall:           bash $AGENT_DIR/uninstall.sh"
 echo ""
