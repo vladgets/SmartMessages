@@ -51,6 +51,15 @@ function init() {
 
     CREATE INDEX IF NOT EXISTS idx_msg_chat_date ON messages(chat_id, date);
     CREATE INDEX IF NOT EXISTS idx_msg_user_date ON messages(user_id, date);
+
+    CREATE TABLE IF NOT EXISTS invites (
+      id         INTEGER PRIMARY KEY,
+      token      TEXT UNIQUE NOT NULL,
+      created_by INTEGER NOT NULL REFERENCES users(id),
+      created_at INTEGER DEFAULT (unixepoch()),
+      expires_at INTEGER NOT NULL,
+      used_at    INTEGER
+    );
   `);
 }
 
@@ -185,4 +194,36 @@ function getMessages(userId, chatId) {
     .filter(m => m.text);
 }
 
-module.exports = { init, createUser, getUserByUsername, getUserById, getUserByToken, syncMessages, getConversations, getMessages };
+// ── Invites ───────────────────────────────────────────────────────────────────
+
+function createInvite(userId) {
+  const token     = crypto.randomBytes(16).toString('hex');
+  const expiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60; // 7 days
+  getDb().prepare(
+    `INSERT INTO invites (token, created_by, expires_at) VALUES (?, ?, ?)`
+  ).run(token, userId, expiresAt);
+  return token;
+}
+
+function getInvite(token) {
+  return getDb().prepare(
+    `SELECT * FROM invites WHERE token = ? AND used_at IS NULL AND expires_at > unixepoch()`
+  ).get(token);
+}
+
+function redeemInvite(inviteToken, username, passwordHash) {
+  const db = getDb();
+  return db.transaction(() => {
+    const invite = db.prepare(
+      `SELECT * FROM invites WHERE token = ? AND used_at IS NULL AND expires_at > unixepoch()`
+    ).get(inviteToken);
+    if (!invite) return null;
+
+    const syncToken = 'sm_' + crypto.randomBytes(24).toString('hex');
+    db.prepare(`INSERT INTO users (username, password_hash, sync_token) VALUES (?, ?, ?)`).run(username, passwordHash, syncToken);
+    db.prepare(`UPDATE invites SET used_at = unixepoch() WHERE token = ?`).run(inviteToken);
+    return syncToken;
+  })();
+}
+
+module.exports = { init, createUser, getUserByUsername, getUserById, getUserByToken, syncMessages, getConversations, getMessages, createInvite, getInvite, redeemInvite };

@@ -40,6 +40,36 @@
 </head>
 <body class="h-full bg-ios-bg font-sans overflow-hidden">
 
+<!-- ── REGISTER SCREEN ───────────────────────────────────────────────────── -->
+<div id="register-screen" class="hidden h-full flex items-center justify-center p-6">
+  <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8 space-y-5">
+    <div class="text-center space-y-1">
+      <div class="text-5xl mb-3">👋</div>
+      <h1 class="text-xl font-bold text-gray-900">Create Account</h1>
+      <p class="text-sm text-gray-400">You've been invited to Smart Messages</p>
+    </div>
+    <div id="register-error" class="hidden bg-red-50 text-red-600 text-sm rounded-xl px-4 py-2.5"></div>
+    <form id="register-form" onsubmit="handleRegister(event)" class="space-y-3">
+      <input id="reg-username" type="text" placeholder="Choose a username" autocomplete="username"
+        class="w-full px-4 py-3 bg-ios-bg rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue" />
+      <input id="reg-password" type="password" placeholder="Choose a password (min 6 chars)" autocomplete="new-password"
+        class="w-full px-4 py-3 bg-ios-bg rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue" />
+      <button type="submit"
+        class="w-full bg-ios-blue text-white py-3 rounded-xl font-semibold text-sm hover:bg-blue-600 active:bg-blue-700 transition-colors">
+        Create Account
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ── INVITE INVALID SCREEN ─────────────────────────────────────────────── -->
+<div id="invite-invalid-screen" class="hidden h-full flex flex-col items-center justify-center gap-4 p-8">
+  <div class="text-5xl">🔗</div>
+  <h1 class="text-xl font-semibold text-gray-800">Invite Link Invalid</h1>
+  <p class="text-gray-500 text-center text-sm max-w-xs">This link has expired or has already been used. Ask for a new invite.</p>
+  <a href="/" class="text-ios-blue text-sm font-medium">Go to login →</a>
+</div>
+
 <!-- ── LOGIN SCREEN ──────────────────────────────────────────────────────── -->
 <div id="login-screen" class="hidden h-full flex items-center justify-center p-6">
   <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8 space-y-5">
@@ -84,6 +114,25 @@
         </button>
       </div>
     </div>
+    <div class="border-t border-gray-100 pt-4">
+      <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Invite Someone</p>
+      <p class="text-xs text-gray-400 mb-3">Generate a one-time link — expires in 7 days.</p>
+      <button onclick="generateInvite()" id="invite-btn"
+        class="w-full bg-ios-bg text-ios-blue text-sm font-medium py-2.5 rounded-xl hover:bg-gray-100 transition-colors">
+        Generate Invite Link
+      </button>
+      <div id="invite-link-area" class="hidden mt-2 space-y-1.5">
+        <div class="flex items-center gap-2">
+          <code id="invite-link-display" class="flex-1 bg-ios-bg text-xs text-gray-700 px-3 py-2.5 rounded-xl font-mono break-all"></code>
+          <button onclick="copyInviteLink()" id="copy-invite-btn"
+            class="flex-shrink-0 bg-ios-blue text-white text-xs px-3 py-2.5 rounded-xl hover:bg-blue-600 transition-colors">
+            Copy
+          </button>
+        </div>
+        <p class="text-xs text-gray-400">Single use · expires in 7 days</p>
+      </div>
+    </div>
+
     <div class="pt-2 border-t border-gray-100">
       <button onclick="handleLogout()"
         class="w-full text-red-500 text-sm font-medium py-2 hover:text-red-600 transition-colors">
@@ -359,6 +408,8 @@ async function openSettings() {
   const res = await fetch('/api/sync/token');
   const { token } = await res.json();
   document.getElementById('sync-token-display').textContent = token;
+  document.getElementById('invite-link-area').classList.add('hidden');
+  document.getElementById('invite-btn').textContent = 'Generate Invite Link';
   document.getElementById('settings-modal').classList.remove('hidden');
 }
 
@@ -379,8 +430,67 @@ document.getElementById('settings-modal').addEventListener('click', e => {
   if (e.target === document.getElementById('settings-modal')) closeSettings();
 });
 
+// ─── Register (invite flow) ───────────────────────────────────────────────────
+let _inviteToken = null;
+
+async function handleRegister(e) {
+  e.preventDefault();
+  const username = document.getElementById('reg-username').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const errEl    = document.getElementById('register-error');
+  errEl.classList.add('hidden');
+
+  const res = await fetch(`/api/invites/${_inviteToken}/register`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ username, password }),
+  });
+  if (res.ok) {
+    document.getElementById('register-screen').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    history.replaceState(null, '', '/');
+    loadConversations();
+  } else {
+    const { error } = await res.json();
+    errEl.textContent = error || 'Registration failed';
+    errEl.classList.remove('hidden');
+  }
+}
+
+// ─── Invite generation ────────────────────────────────────────────────────────
+async function generateInvite() {
+  document.getElementById('invite-link-area').classList.add('hidden');
+  document.getElementById('invite-btn').textContent = 'Generating…';
+
+  const { url } = await fetch('/api/invites', { method: 'POST' }).then(r => r.json());
+
+  document.getElementById('invite-link-display').textContent = url;
+  document.getElementById('invite-link-area').classList.remove('hidden');
+  document.getElementById('invite-btn').textContent = 'Generate Another';
+}
+
+async function copyInviteLink() {
+  await navigator.clipboard.writeText(document.getElementById('invite-link-display').textContent);
+  const btn = document.getElementById('copy-invite-btn');
+  btn.textContent = 'Copied!';
+  setTimeout(() => btn.textContent = 'Copy', 2000);
+}
+
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 (async () => {
+  const inviteMatch = window.location.pathname.match(/^\/invite\/([a-f0-9]+)$/);
+
+  if (inviteMatch) {
+    _inviteToken = inviteMatch[1];
+    const res = await fetch(`/api/invites/${_inviteToken}`);
+    if (res.ok) {
+      document.getElementById('register-screen').classList.remove('hidden');
+    } else {
+      document.getElementById('invite-invalid-screen').classList.remove('hidden');
+    }
+    return;
+  }
+
   const res = await fetch('/api/auth/me');
   if (res.ok) {
     document.getElementById('app').classList.remove('hidden');

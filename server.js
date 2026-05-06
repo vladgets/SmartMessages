@@ -79,6 +79,41 @@ app.post('/api/sync', requireToken, (req, res) => {
   res.json({ status: 'ok', accepted });
 });
 
+// ── Invites ───────────────────────────────────────────────────────────────────
+
+app.post('/api/invites', requireSession, (req, res) => {
+  const token = db.createInvite(req.session.userId);
+  const url   = `${req.protocol}://${req.get('host')}/invite/${token}`;
+  res.json({ token, url });
+});
+
+app.get('/api/invites/:token', (req, res) => {
+  const invite = db.getInvite(req.params.token);
+  if (!invite) return res.status(404).json({ error: 'Invite not found or already used' });
+  res.json({ valid: true });
+});
+
+app.post('/api/invites/:token/register', (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password)   return res.status(400).json({ error: 'Missing fields' });
+  if (username.length < 2)      return res.status(400).json({ error: 'Username too short' });
+  if (password.length < 6)      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  if (db.getUserByUsername(username)) return res.status(400).json({ error: 'Username already taken' });
+
+  const hash      = bcrypt.hashSync(password, 12);
+  const syncToken = db.redeemInvite(req.params.token, username, hash);
+  if (!syncToken) return res.status(410).json({ error: 'Invite expired or already used' });
+
+  const user = db.getUserByUsername(username);
+  req.session.userId = user.id;
+  res.json({ username: user.username });
+});
+
+// Serve SPA for invite URLs
+app.get('/invite/:token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // ── Read endpoints ────────────────────────────────────────────────────────────
 
 app.get('/api/conversations', requireSession, (req, res) => {
