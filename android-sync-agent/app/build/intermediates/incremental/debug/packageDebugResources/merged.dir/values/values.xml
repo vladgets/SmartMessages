@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">SmartMessages Sync</string>
-    <style name="Theme.SmartMessages" parent="Theme.MaterialComponents.Light.DarkActionBar">
-        <item name="colorPrimary">#1B5E20</item>
-        <item name="colorPrimaryVariant">#003300</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
-    </style>
-</resources>
