@@ -187,7 +187,9 @@ app.get('/api/conversations', requireSession, (req, res) => {
 });
 
 app.get('/api/conversations/:chatId/messages', requireSession, (req, res) => {
-  res.json(db.getMessages(req.session.userId, Number(req.params.chatId)));
+  const chatId = Number(req.params.chatId);
+  db.markChatRead(req.session.userId, chatId);
+  res.json(db.getMessages(req.session.userId, chatId));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

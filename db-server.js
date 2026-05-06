@@ -173,6 +173,13 @@ function getConversations(userId) {
   }));
 }
 
+function markChatRead(userId, chatId) {
+  getDb().prepare(`
+    UPDATE messages SET is_read = 1
+    WHERE chat_id = ? AND user_id = ? AND is_from_me = 0 AND is_read = 0
+  `).run(chatId, userId);
+}
+
 function getMessages(userId, chatId) {
   const chat = getDb().prepare(`SELECT id FROM chats WHERE id = ? AND user_id = ?`).get(chatId, userId);
   if (!chat) return [];
@@ -226,4 +233,4 @@ function redeemInvite(inviteToken, username, passwordHash) {
   })();
 }
 
-module.exports = { init, createUser, getUserByUsername, getUserById, getUserByToken, syncMessages, getConversations, getMessages, createInvite, getInvite, redeemInvite };
+module.exports = { init, createUser, getUserByUsername, getUserById, getUserByToken, syncMessages, getConversations, getMessages, markChatRead, createInvite, getInvite, redeemInvite };

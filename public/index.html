@@ -408,6 +408,8 @@ async function selectConv(chatId) {
   renderConversations();
   showThread();
   const msgs = await fetch(`/api/conversations/${chatId}/messages`).then(r => r.json());
+  conv.unread_count = 0;
+  renderConversations();
   renderMessages(msgs, conv);
 }
 
