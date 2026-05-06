@@ -216,13 +216,44 @@ app.post('/api/admin/exit', requireAdmin, (req, res) => {
 // ── Read endpoints ────────────────────────────────────────────────────────────
 
 app.get('/api/conversations', requireSession, (req, res) => {
-  res.json(db.getConversations(req.effectiveUserId));
+  const labelId = req.query.labelId ? Number(req.query.labelId) : null;
+  res.json(db.getConversations(req.effectiveUserId, labelId));
 });
 
 app.get('/api/conversations/:chatId/messages', requireSession, (req, res) => {
   const chatId = Number(req.params.chatId);
   db.markChatRead(req.effectiveUserId, chatId);
   res.json(db.getMessages(req.effectiveUserId, chatId));
+});
+
+// ── Labels ────────────────────────────────────────────────────────────────────
+
+app.get('/api/labels', requireSession, (req, res) => {
+  res.json(db.getLabels(req.effectiveUserId));
+});
+
+app.post('/api/labels', requireSession, (req, res) => {
+  const { name, color } = req.body || {};
+  if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
+  try {
+    db.createLabel(req.effectiveUserId, name.trim(), color || '#007AFF');
+    res.json(db.getLabels(req.effectiveUserId));
+  } catch {
+    res.status(400).json({ error: 'A label with that name already exists' });
+  }
+});
+
+app.delete('/api/labels/:id', requireSession, (req, res) => {
+  db.deleteLabel(req.effectiveUserId, Number(req.params.id));
+  res.json(db.getLabels(req.effectiveUserId));
+});
+
+app.put('/api/conversations/:chatId/labels', requireSession, (req, res) => {
+  const { labelIds } = req.body || {};
+  if (!Array.isArray(labelIds)) return res.status(400).json({ error: 'Expected { labelIds: [...] }' });
+  const ok = db.setChatLabels(req.effectiveUserId, Number(req.params.chatId), labelIds);
+  if (!ok) return res.status(404).json({ error: 'Chat not found' });
+  res.json({ status: 'ok' });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

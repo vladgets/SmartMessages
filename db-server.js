@@ -52,6 +52,21 @@ function init() {
 
     CREATE INDEX IF NOT EXISTS idx_msg_chat_date ON messages(chat_id, date);
     CREATE INDEX IF NOT EXISTS idx_msg_user_date ON messages(user_id, date);
+
+    CREATE TABLE IF NOT EXISTS labels (
+      id         INTEGER PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      name       TEXT NOT NULL,
+      color      TEXT NOT NULL DEFAULT '#007AFF',
+      created_at INTEGER DEFAULT (unixepoch()),
+      UNIQUE(user_id, name)
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_labels (
+      chat_id    INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+      label_id   INTEGER NOT NULL REFERENCES labels(id) ON DELETE CASCADE,
+      PRIMARY KEY (chat_id, label_id)
+    );
   `);
 
   // Migration: add is_admin column to existing databases
@@ -147,8 +162,9 @@ function syncMessages(userId, messages) {
 
 // ── Read ──────────────────────────────────────────────────────────────────────
 
-function getConversations(userId) {
-  const rows = getDb().prepare(`
+function getConversations(userId, labelId = null) {
+  const db = getDb();
+  let sql = `
     SELECT
       c.id                                                       AS chat_id,
       c.chat_identifier,
@@ -167,8 +183,30 @@ function getConversations(userId) {
       FROM messages WHERE user_id = ?
     ) lm ON c.id = lm.chat_id AND lm.rn = 1
     WHERE c.user_id = ?
-    ORDER BY lm.date DESC
-  `).all(userId, userId);
+  `;
+  const params = [userId, userId];
+  if (labelId) {
+    sql += ` AND EXISTS (SELECT 1 FROM chat_labels cl WHERE cl.chat_id = c.id AND cl.label_id = ?)`;
+    params.push(labelId);
+  }
+  sql += ` ORDER BY lm.date DESC`;
+
+  const rows = db.prepare(sql).all(...params);
+
+  const labelsMap = {};
+  if (rows.length) {
+    const chatIds = rows.map(r => r.chat_id);
+    const chatLabels = db.prepare(`
+      SELECT cl.chat_id, l.id, l.name, l.color
+      FROM chat_labels cl
+      JOIN labels l ON l.id = cl.label_id
+      WHERE cl.chat_id IN (${chatIds.map(() => '?').join(',')})
+    `).all(...chatIds);
+    for (const row of chatLabels) {
+      if (!labelsMap[row.chat_id]) labelsMap[row.chat_id] = [];
+      labelsMap[row.chat_id].push({ id: row.id, name: row.name, color: row.color });
+    }
+  }
 
   return rows.map(r => ({
     chat_id:         r.chat_id,
@@ -178,6 +216,7 @@ function getConversations(userId) {
     last_date:       r.last_date,
     last_is_from_me: !!r.last_is_from_me,
     unread_count:    r.unread_count,
+    labels:          labelsMap[r.chat_id] || [],
   }));
 }
 
@@ -207,6 +246,35 @@ function getMessages(userId, chatId) {
       sender_id:   r.sender_handle,
     }))
     .filter(m => m.text);
+}
+
+// ── Labels ────────────────────────────────────────────────────────────────────
+
+function getLabels(userId) {
+  return getDb().prepare(`SELECT id, name, color FROM labels WHERE user_id = ? ORDER BY name ASC`).all(userId);
+}
+
+function createLabel(userId, name, color) {
+  getDb().prepare(`INSERT INTO labels (user_id, name, color) VALUES (?, ?, ?)`).run(userId, name, color);
+}
+
+function deleteLabel(userId, labelId) {
+  getDb().prepare(`DELETE FROM labels WHERE id = ? AND user_id = ?`).run(labelId, userId);
+}
+
+function setChatLabels(userId, chatId, labelIds) {
+  const db = getDb();
+  const chat = db.prepare(`SELECT id FROM chats WHERE id = ? AND user_id = ?`).get(chatId, userId);
+  if (!chat) return false;
+  db.transaction(() => {
+    db.prepare(`DELETE FROM chat_labels WHERE chat_id = ?`).run(chatId);
+    const checkLabel = db.prepare(`SELECT id FROM labels WHERE id = ? AND user_id = ?`);
+    const insert     = db.prepare(`INSERT OR IGNORE INTO chat_labels (chat_id, label_id) VALUES (?, ?)`);
+    for (const labelId of labelIds) {
+      if (checkLabel.get(labelId, userId)) insert.run(chatId, labelId);
+    }
+  })();
+  return true;
 }
 
 // ── Invites ───────────────────────────────────────────────────────────────────
@@ -247,4 +315,4 @@ function getUsers() {
   ).all();
 }
 
-module.exports = { init, createUser, getUserByUsername, getUserById, getUserByToken, syncMessages, getConversations, getMessages, markChatRead, createInvite, getInvite, redeemInvite, getUsers };
+module.exports = { init, createUser, getUserByUsername, getUserById, getUserByToken, syncMessages, getConversations, getMessages, markChatRead, createInvite, getInvite, redeemInvite, getUsers, getLabels, createLabel, deleteLabel, setChatLabels };
