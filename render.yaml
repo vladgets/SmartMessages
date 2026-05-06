@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: smart-messages
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    disk:
+      name: data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1

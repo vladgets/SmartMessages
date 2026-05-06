@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Smart Messages</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'ios-blue':  '#007AFF',
+            'ios-green': '#34C759',
+            'ios-gray':  '#E5E5EA',
+            'ios-bg':    '#F2F2F7',
+            'ios-sep':   '#C6C6C8',
+          },
+          fontFamily: {
+            sans: ['-apple-system','BlinkMacSystemFont','SF Pro Text','Segoe UI','Roboto','sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #C6C6C8; border-radius: 3px; }
+
+    #thread-panel {
+      transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    #thread-panel.hidden-mobile {
+      transform: translateX(100%);
+    }
+    @media (min-width: 768px) {
+      #thread-panel { transform: none !important; }
+    }
+
+    .conv-item.active { background-color: #D1D1D6; }
+    .conv-item:hover:not(.active) { background-color: #EBEBF0; }
+  </style>
+</head>
+<body class="h-full bg-ios-bg font-sans overflow-hidden">
+
+<!-- ── UPLOAD SCREEN ─────────────────────────────────────────────────────── -->
+<div id="upload-screen" class="hidden h-full flex flex-col items-center justify-center gap-6 p-8">
+  <div class="text-6xl select-none">💬</div>
+  <h1 class="text-2xl font-semibold text-gray-800">Smart Messages</h1>
+  <p class="text-gray-500 text-center max-w-sm text-sm leading-relaxed">
+    Upload your <strong>chat.db</strong> file from your Mac:<br/>
+    <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">~/Library/Messages/chat.db</code>
+  </p>
+  <label class="cursor-pointer">
+    <input type="file" id="db-file-input" accept=".db" class="hidden" />
+    <span class="inline-flex items-center gap-2 bg-ios-blue text-white px-6 py-3 rounded-xl font-medium text-sm shadow hover:bg-blue-600 active:bg-blue-700 transition-colors">
+      Choose chat.db
+    </span>
+  </label>
+  <p id="upload-status" class="text-sm text-gray-400 hidden"></p>
+</div>
+
+<!-- ── MAIN APP ───────────────────────────────────────────────────────────── -->
+<div id="app" class="hidden h-full flex">
+
+  <!-- Sidebar -->
+  <div id="sidebar" class="w-full md:w-80 lg:w-96 flex-shrink-0 flex flex-col bg-white border-r border-ios-sep">
+
+    <div class="px-4 pt-5 pb-3 bg-white sticky top-0 z-10 border-b border-ios-sep">
+      <h1 class="text-xl font-bold text-gray-900 mb-3">Messages</h1>
+      <div class="relative">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        <input id="search-input" type="text" placeholder="Search"
+          class="w-full pl-9 pr-4 py-2 bg-ios-bg rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue"
+          oninput="onSearch(this.value)" />
+      </div>
+    </div>
+
+    <div id="conversation-list" class="flex-1 overflow-y-auto">
+      <div class="flex items-center justify-center h-32 text-gray-400 text-sm">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Thread panel -->
+  <div id="thread-panel" class="fixed inset-0 z-20 flex flex-col bg-white md:static md:flex md:flex-1 hidden-mobile">
+
+    <div class="flex items-center gap-3 px-4 py-3 border-b border-ios-sep bg-white/90 backdrop-blur sticky top-0 z-10">
+      <button class="md:hidden flex items-center gap-1 text-ios-blue font-medium text-sm" onclick="showSidebar()">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/>
+        </svg>
+        Back
+      </button>
+      <div id="thread-avatar" class="w-9 h-9 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0"></div>
+      <div class="flex-1 min-w-0">
+        <div id="thread-name" class="font-semibold text-gray-900 text-sm truncate"></div>
+        <div id="thread-sub"  class="text-xs text-gray-400 truncate"></div>
+      </div>
+    </div>
+
+    <div id="message-list" class="flex-1 overflow-y-auto px-4 py-4 bg-white">
+      <div id="no-chat-placeholder" class="h-full flex flex-col items-center justify-center text-gray-300 gap-3 select-none">
+        <svg class="w-16 h-16" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M20 2H4C2.9 2 2 2.9 2 4v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+        </svg>
+        <span class="text-sm text-gray-400">Select a conversation</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+const state = { conversations: [], filtered: [], activeChatId: null };
+
+// ─── Avatar helpers ───────────────────────────────────────────────────────────
+const COLORS = ['#FF3B30','#FF9500','#FFCC00','#34C759','#00C7BE','#30B0C7',
+                 '#32ADE6','#007AFF','#5856D6','#AF52DE','#FF2D55','#A2845E'];
+
+function avatarColor(name) {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffffffff;
+  return COLORS[Math.abs(h) % COLORS.length];
+}
+
+function initials(name) {
+  const p = name.trim().split(/\s+/);
+  return p.length === 1 ? p[0].slice(0, 2).toUpperCase() : (p[0][0] + p[p.length-1][0]).toUpperCase();
+}
+
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+function fmtConvDate(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000), now = new Date();
+  const diff = Math.floor((now - d) / 86400000);
+  if (diff === 0) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (diff < 7)  return d.toLocaleDateString([], { weekday: 'short' });
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function fmtTime(ts) {
+  return ts ? new Date(ts * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+}
+
+function fmtSeparator(ts) {
+  const d = new Date(ts * 1000), now = new Date();
+  const diff = Math.floor((now - d) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  if (diff < 7)  return d.toLocaleDateString([], { weekday: 'long' });
+  return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function sameDay(a, b) {
+  const da = new Date(a * 1000), db = new Date(b * 1000);
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
+function esc(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Render: conversation list ────────────────────────────────────────────────
+function renderConversations() {
+  const el = document.getElementById('conversation-list');
+  if (!state.filtered.length) {
+    el.innerHTML = `<div class="flex items-center justify-center h-32 text-gray-400 text-sm">No conversations</div>`;
+    return;
+  }
+  el.innerHTML = state.filtered.map(c => {
+    const color  = avatarColor(c.display_name);
+    const inits  = initials(c.display_name);
+    const badge  = c.unread_count > 0
+      ? `<span class="ml-1 min-w-[18px] h-[18px] px-1 bg-ios-blue text-white text-xs font-bold rounded-full flex items-center justify-center">${c.unread_count}</span>` : '';
+    const preview = (c.last_is_from_me ? 'You: ' : '') + (c.last_text || '');
+    const active  = c.chat_id === state.activeChatId ? 'active' : '';
+    return `
+      <div class="conv-item ${active} flex items-center gap-3 px-4 py-3 cursor-pointer border-b border-gray-100" onclick="selectConv(${c.chat_id})">
+        <div class="w-11 h-11 rounded-full flex-shrink-0 flex items-center justify-center text-white font-semibold text-base" style="background:${color}">${inits}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-${c.unread_count > 0 ? 'bold' : 'semibold'} text-sm text-gray-900 truncate">${esc(c.display_name)}</span>
+            <span class="text-xs text-gray-400 flex-shrink-0">${fmtConvDate(c.last_date)}</span>
+          </div>
+          <div class="flex items-center gap-1 mt-0.5">
+            <span class="text-sm text-gray-500 truncate flex-1">${esc(preview)}</span>
+            ${badge}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ─── Render: message thread ───────────────────────────────────────────────────
+function renderMessages(messages, conv) {
+  const el = document.getElementById('message-list');
+  if (!messages.length) {
+    el.innerHTML = `<div class="flex items-center justify-center h-full text-gray-400 text-sm">No messages</div>`;
+    return;
+  }
+
+  const color = avatarColor(conv.display_name);
+  const inits = initials(conv.display_name);
+  let html = '', lastTs = null;
+
+  messages.forEach((m, i) => {
+    // Date separator
+    if (!lastTs || !sameDay(lastTs, m.date)) {
+      html += `<div class="flex justify-center my-4"><span class="text-xs text-gray-400">${fmtSeparator(m.date)}</span></div>`;
+      lastTs = m.date;
+    }
+
+    const next = messages[i + 1];
+    const isLastInGroup = !next || next.is_from_me !== m.is_from_me || !sameDay(m.date, next.date);
+
+    if (m.is_from_me) {
+      const bg = m.service === 'SMS' ? 'bg-ios-green' : 'bg-ios-blue';
+      html += `
+        <div class="flex justify-end items-end gap-1 ${isLastInGroup ? 'mb-3' : 'mb-0.5'}">
+          <div class="max-w-[72%]">
+            <div class="${bg} text-white rounded-2xl rounded-br-sm px-3.5 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap">${esc(m.text)}</div>
+            ${isLastInGroup ? `<div class="text-right text-xs text-gray-400 mt-1 pr-1">${fmtTime(m.date)}</div>` : ''}
+          </div>
+        </div>`;
+    } else {
+      html += `
+        <div class="flex items-end gap-2 ${isLastInGroup ? 'mb-3' : 'mb-0.5'}">
+          <div class="w-7 h-7 flex-shrink-0">
+            ${isLastInGroup ? `<div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold" style="background:${color}">${inits}</div>` : ''}
+          </div>
+          <div class="max-w-[72%]">
+            <div class="bg-ios-gray text-gray-900 rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap">${esc(m.text)}</div>
+            ${isLastInGroup ? `<div class="text-xs text-gray-400 mt-1 pl-1">${fmtTime(m.date)}</div>` : ''}
+          </div>
+        </div>`;
+    }
+  });
+
+  el.innerHTML = html;
+  el.scrollTop = el.scrollHeight;
+}
+
+// ─── Actions ──────────────────────────────────────────────────────────────────
+async function loadConversations() {
+  const data = await fetch('/api/conversations').then(r => r.json());
+  state.conversations = data;
+  state.filtered = data;
+  renderConversations();
+}
+
+async function selectConv(chatId) {
+  state.activeChatId = chatId;
+  const conv = state.conversations.find(c => c.chat_id === chatId);
+
+  document.getElementById('thread-avatar').style.background = avatarColor(conv.display_name);
+  document.getElementById('thread-avatar').textContent = initials(conv.display_name);
+  document.getElementById('thread-name').textContent = conv.display_name;
+  document.getElementById('thread-sub').textContent  = conv.service_name;
+  document.getElementById('message-list').innerHTML  =
+    `<div class="flex items-center justify-center h-full text-gray-400 text-sm">Loading…</div>`;
+
+  renderConversations();
+  showThread();
+
+  const msgs = await fetch(`/api/conversations/${chatId}/messages`).then(r => r.json());
+  renderMessages(msgs, conv);
+}
+
+function onSearch(q) {
+  q = q.toLowerCase();
+  state.filtered = q
+    ? state.conversations.filter(c =>
+        c.display_name.toLowerCase().includes(q) || (c.last_text || '').toLowerCase().includes(q))
+    : state.conversations;
+  renderConversations();
+}
+
+// ─── Mobile nav ───────────────────────────────────────────────────────────────
+function showThread() {
+  document.getElementById('thread-panel').classList.remove('hidden-mobile');
+  document.getElementById('sidebar').classList.add('hidden', 'md:flex');
+}
+
+function showSidebar() {
+  document.getElementById('thread-panel').classList.add('hidden-mobile');
+  document.getElementById('sidebar').classList.remove('hidden');
+  state.activeChatId = null;
+  renderConversations();
+}
+
+// ─── Upload ───────────────────────────────────────────────────────────────────
+document.getElementById('db-file-input').addEventListener('change', async function () {
+  const file = this.files[0];
+  if (!file) return;
+  const status = document.getElementById('upload-status');
+  status.textContent = 'Uploading…';
+  status.classList.remove('hidden');
+
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch('/api/upload', { method: 'POST', body: form });
+  if (res.ok) {
+    document.getElementById('upload-screen').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    loadConversations();
+  } else {
+    status.textContent = 'Upload failed. Try again.';
+  }
+});
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+(async () => {
+  const { hasDb } = await fetch('/api/status').then(r => r.json());
+  if (hasDb) {
+    document.getElementById('app').classList.remove('hidden');
+    loadConversations();
+  } else {
+    document.getElementById('upload-screen').classList.remove('hidden');
+  }
+})();
+</script>
+</body>
+</html>
