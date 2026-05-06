@@ -31,12 +31,8 @@
     #thread-panel {
       transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    #thread-panel.hidden-mobile {
-      transform: translateX(100%);
-    }
-    @media (min-width: 768px) {
-      #thread-panel { transform: none !important; }
-    }
+    #thread-panel.hidden-mobile { transform: translateX(100%); }
+    @media (min-width: 768px) { #thread-panel { transform: none !important; } }
 
     .conv-item.active { background-color: #D1D1D6; }
     .conv-item:hover:not(.active) { background-color: #EBEBF0; }
@@ -44,21 +40,57 @@
 </head>
 <body class="h-full bg-ios-bg font-sans overflow-hidden">
 
-<!-- ── UPLOAD SCREEN ─────────────────────────────────────────────────────── -->
-<div id="upload-screen" class="hidden h-full flex flex-col items-center justify-center gap-6 p-8">
-  <div class="text-6xl select-none">💬</div>
-  <h1 class="text-2xl font-semibold text-gray-800">Smart Messages</h1>
-  <p class="text-gray-500 text-center max-w-sm text-sm leading-relaxed">
-    Upload your <strong>chat.db</strong> file from your Mac:<br/>
-    <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">~/Library/Messages/chat.db</code>
-  </p>
-  <label class="cursor-pointer">
-    <input type="file" id="db-file-input" accept=".db" class="hidden" />
-    <span class="inline-flex items-center gap-2 bg-ios-blue text-white px-6 py-3 rounded-xl font-medium text-sm shadow hover:bg-blue-600 active:bg-blue-700 transition-colors">
-      Choose chat.db
-    </span>
-  </label>
-  <p id="upload-status" class="text-sm text-gray-400 hidden"></p>
+<!-- ── LOGIN SCREEN ──────────────────────────────────────────────────────── -->
+<div id="login-screen" class="hidden h-full flex items-center justify-center p-6">
+  <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8 space-y-5">
+    <div class="text-center space-y-1">
+      <div class="text-5xl mb-3">💬</div>
+      <h1 class="text-xl font-bold text-gray-900">Smart Messages</h1>
+      <p class="text-sm text-gray-400">Sign in to your account</p>
+    </div>
+    <div id="login-error" class="hidden bg-red-50 text-red-600 text-sm rounded-xl px-4 py-2.5"></div>
+    <form id="login-form" onsubmit="handleLogin(event)" class="space-y-3">
+      <input id="login-username" type="text" placeholder="Username" autocomplete="username"
+        class="w-full px-4 py-3 bg-ios-bg rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue" />
+      <input id="login-password" type="password" placeholder="Password" autocomplete="current-password"
+        class="w-full px-4 py-3 bg-ios-bg rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue" />
+      <button type="submit"
+        class="w-full bg-ios-blue text-white py-3 rounded-xl font-semibold text-sm hover:bg-blue-600 active:bg-blue-700 transition-colors">
+        Sign In
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ── SETTINGS MODAL ────────────────────────────────────────────────────── -->
+<div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
+  <div class="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 space-y-5">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-bold text-gray-900">Settings</h2>
+      <button onclick="closeSettings()" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div>
+      <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Sync Token</p>
+      <p class="text-xs text-gray-400 mb-2">Use this token to configure the sync agent on your Mac.</p>
+      <div class="flex items-center gap-2">
+        <code id="sync-token-display" class="flex-1 bg-ios-bg text-xs text-gray-700 px-3 py-2.5 rounded-xl font-mono break-all"></code>
+        <button onclick="copyToken()" id="copy-btn"
+          class="flex-shrink-0 bg-ios-blue text-white text-xs px-3 py-2.5 rounded-xl hover:bg-blue-600 transition-colors">
+          Copy
+        </button>
+      </div>
+    </div>
+    <div class="pt-2 border-t border-gray-100">
+      <button onclick="handleLogout()"
+        class="w-full text-red-500 text-sm font-medium py-2 hover:text-red-600 transition-colors">
+        Sign Out
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- ── MAIN APP ───────────────────────────────────────────────────────────── -->
@@ -66,9 +98,17 @@
 
   <!-- Sidebar -->
   <div id="sidebar" class="w-full md:w-80 lg:w-96 flex-shrink-0 flex flex-col bg-white border-r border-ios-sep">
-
     <div class="px-4 pt-5 pb-3 bg-white sticky top-0 z-10 border-b border-ios-sep">
-      <h1 class="text-xl font-bold text-gray-900 mb-3">Messages</h1>
+      <div class="flex items-center justify-between mb-3">
+        <h1 class="text-xl font-bold text-gray-900">Messages</h1>
+        <button onclick="openSettings()" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </button>
+      </div>
       <div class="relative">
         <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -78,7 +118,6 @@
           oninput="onSearch(this.value)" />
       </div>
     </div>
-
     <div id="conversation-list" class="flex-1 overflow-y-auto">
       <div class="flex items-center justify-center h-32 text-gray-400 text-sm">Loading…</div>
     </div>
@@ -86,7 +125,6 @@
 
   <!-- Thread panel -->
   <div id="thread-panel" class="fixed inset-0 z-20 flex flex-col bg-white md:static md:flex md:flex-1 hidden-mobile">
-
     <div class="flex items-center gap-3 px-4 py-3 border-b border-ios-sep bg-white/90 backdrop-blur sticky top-0 z-10">
       <button class="md:hidden flex items-center gap-1 text-ios-blue font-medium text-sm" onclick="showSidebar()">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -100,7 +138,6 @@
         <div id="thread-sub"  class="text-xs text-gray-400 truncate"></div>
       </div>
     </div>
-
     <div id="message-list" class="flex-1 overflow-y-auto px-4 py-4 bg-white">
       <div id="no-chat-placeholder" class="h-full flex flex-col items-center justify-center text-gray-300 gap-3 select-none">
         <svg class="w-16 h-16" fill="currentColor" viewBox="0 0 24 24">
@@ -163,7 +200,7 @@ function esc(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ─── Render: conversation list ────────────────────────────────────────────────
+// ─── Conversations ────────────────────────────────────────────────────────────
 function renderConversations() {
   const el = document.getElementById('conversation-list');
   if (!state.filtered.length) {
@@ -194,51 +231,47 @@ function renderConversations() {
   }).join('');
 }
 
-// ─── Render: message thread ───────────────────────────────────────────────────
+// ─── Messages ─────────────────────────────────────────────────────────────────
 function renderMessages(messages, conv) {
   const el = document.getElementById('message-list');
   if (!messages.length) {
     el.innerHTML = `<div class="flex items-center justify-center h-full text-gray-400 text-sm">No messages</div>`;
     return;
   }
-
   const color = avatarColor(conv.display_name);
   const inits = initials(conv.display_name);
   let html = '', lastTs = null;
 
   messages.forEach((m, i) => {
-    // Date separator
     if (!lastTs || !sameDay(lastTs, m.date)) {
       html += `<div class="flex justify-center my-4"><span class="text-xs text-gray-400">${fmtSeparator(m.date)}</span></div>`;
       lastTs = m.date;
     }
-
     const next = messages[i + 1];
-    const isLastInGroup = !next || next.is_from_me !== m.is_from_me || !sameDay(m.date, next.date);
+    const isLast = !next || next.is_from_me !== m.is_from_me || !sameDay(m.date, next.date);
 
     if (m.is_from_me) {
       const bg = m.service === 'SMS' ? 'bg-ios-green' : 'bg-ios-blue';
       html += `
-        <div class="flex justify-end items-end gap-1 ${isLastInGroup ? 'mb-3' : 'mb-0.5'}">
+        <div class="flex justify-end items-end ${isLast ? 'mb-3' : 'mb-0.5'}">
           <div class="max-w-[72%]">
             <div class="${bg} text-white rounded-2xl rounded-br-sm px-3.5 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap">${esc(m.text)}</div>
-            ${isLastInGroup ? `<div class="text-right text-xs text-gray-400 mt-1 pr-1">${fmtTime(m.date)}</div>` : ''}
+            ${isLast ? `<div class="text-right text-xs text-gray-400 mt-1 pr-1">${fmtTime(m.date)}</div>` : ''}
           </div>
         </div>`;
     } else {
       html += `
-        <div class="flex items-end gap-2 ${isLastInGroup ? 'mb-3' : 'mb-0.5'}">
+        <div class="flex items-end gap-2 ${isLast ? 'mb-3' : 'mb-0.5'}">
           <div class="w-7 h-7 flex-shrink-0">
-            ${isLastInGroup ? `<div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold" style="background:${color}">${inits}</div>` : ''}
+            ${isLast ? `<div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold" style="background:${color}">${inits}</div>` : ''}
           </div>
           <div class="max-w-[72%]">
             <div class="bg-ios-gray text-gray-900 rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap">${esc(m.text)}</div>
-            ${isLastInGroup ? `<div class="text-xs text-gray-400 mt-1 pl-1">${fmtTime(m.date)}</div>` : ''}
+            ${isLast ? `<div class="text-xs text-gray-400 mt-1 pl-1">${fmtTime(m.date)}</div>` : ''}
           </div>
         </div>`;
     }
   });
-
   el.innerHTML = html;
   el.scrollTop = el.scrollHeight;
 }
@@ -254,17 +287,14 @@ async function loadConversations() {
 async function selectConv(chatId) {
   state.activeChatId = chatId;
   const conv = state.conversations.find(c => c.chat_id === chatId);
-
   document.getElementById('thread-avatar').style.background = avatarColor(conv.display_name);
   document.getElementById('thread-avatar').textContent = initials(conv.display_name);
   document.getElementById('thread-name').textContent = conv.display_name;
   document.getElementById('thread-sub').textContent  = conv.service_name;
   document.getElementById('message-list').innerHTML  =
     `<div class="flex items-center justify-center h-full text-gray-400 text-sm">Loading…</div>`;
-
   renderConversations();
   showThread();
-
   const msgs = await fetch(`/api/conversations/${chatId}/messages`).then(r => r.json());
   renderMessages(msgs, conv);
 }
@@ -272,8 +302,7 @@ async function selectConv(chatId) {
 function onSearch(q) {
   q = q.toLowerCase();
   state.filtered = q
-    ? state.conversations.filter(c =>
-        c.display_name.toLowerCase().includes(q) || (c.last_text || '').toLowerCase().includes(q))
+    ? state.conversations.filter(c => c.display_name.toLowerCase().includes(q) || (c.last_text || '').toLowerCase().includes(q))
     : state.conversations;
   renderConversations();
 }
@@ -283,7 +312,6 @@ function showThread() {
   document.getElementById('thread-panel').classList.remove('hidden-mobile');
   document.getElementById('sidebar').classList.add('hidden', 'md:flex');
 }
-
 function showSidebar() {
   document.getElementById('thread-panel').classList.add('hidden-mobile');
   document.getElementById('sidebar').classList.remove('hidden');
@@ -291,34 +319,74 @@ function showSidebar() {
   renderConversations();
 }
 
-// ─── Upload ───────────────────────────────────────────────────────────────────
-document.getElementById('db-file-input').addEventListener('change', async function () {
-  const file = this.files[0];
-  if (!file) return;
-  const status = document.getElementById('upload-status');
-  status.textContent = 'Uploading…';
-  status.classList.remove('hidden');
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+async function handleLogin(e) {
+  e.preventDefault();
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl    = document.getElementById('login-error');
+  errEl.classList.add('hidden');
 
-  const form = new FormData();
-  form.append('file', file);
-  const res = await fetch('/api/upload', { method: 'POST', body: form });
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
   if (res.ok) {
-    document.getElementById('upload-screen').classList.add('hidden');
+    document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     loadConversations();
   } else {
-    status.textContent = 'Upload failed. Try again.';
+    const { error } = await res.json();
+    errEl.textContent = error || 'Login failed';
+    errEl.classList.remove('hidden');
   }
+}
+
+async function handleLogout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  closeSettings();
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('login-password').value = '';
+  state.conversations = [];
+  state.filtered = [];
+  state.activeChatId = null;
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+async function openSettings() {
+  const res = await fetch('/api/sync/token');
+  const { token } = await res.json();
+  document.getElementById('sync-token-display').textContent = token;
+  document.getElementById('settings-modal').classList.remove('hidden');
+}
+
+function closeSettings() {
+  document.getElementById('settings-modal').classList.add('hidden');
+}
+
+async function copyToken() {
+  const token = document.getElementById('sync-token-display').textContent;
+  await navigator.clipboard.writeText(token);
+  const btn = document.getElementById('copy-btn');
+  btn.textContent = 'Copied!';
+  setTimeout(() => btn.textContent = 'Copy', 2000);
+}
+
+// Close modal on backdrop click
+document.getElementById('settings-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('settings-modal')) closeSettings();
 });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 (async () => {
-  const { hasDb } = await fetch('/api/status').then(r => r.json());
-  if (hasDb) {
+  const res = await fetch('/api/auth/me');
+  if (res.ok) {
     document.getElementById('app').classList.remove('hidden');
     loadConversations();
   } else {
-    document.getElementById('upload-screen').classList.remove('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
   }
 })();
 </script>
