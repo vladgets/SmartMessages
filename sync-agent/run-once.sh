@@ -12,4 +12,4 @@ if ! command -v node &>/dev/null; then
   exit 1
 fi
 
-node index.js
+node index.js "$@"

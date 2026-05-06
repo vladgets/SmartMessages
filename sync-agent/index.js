@@ -33,6 +33,25 @@ function saveConfig(cfg) {
   writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
 }
 
+// ─── CLI args ─────────────────────────────────────────────────────────────────
+
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const result = {};
+  for (let i = 0; i < args.length; i++) {
+    if ((args[i] === '--from' || args[i] === '-f') && args[i + 1]) {
+      const d = new Date(args[++i]);
+      if (isNaN(d)) { console.error(`Invalid --from date: ${args[i]}`); process.exit(1); }
+      result.from = Math.floor(d.getTime() / 1000);
+    } else if ((args[i] === '--to' || args[i] === '-t') && args[i + 1]) {
+      const d = new Date(args[++i]);
+      if (isNaN(d)) { console.error(`Invalid --to date: ${args[i]}`); process.exit(1); }
+      result.to = Math.floor(d.getTime() / 1000);
+    }
+  }
+  return result;
+}
+
 // ─── SQLite helpers ───────────────────────────────────────────────────────────
 
 function queryDb(sql, params = []) {
@@ -66,8 +85,9 @@ function toAppleTs(unixTs) {
   return (unixTs - APPLE_EPOCH) * 1_000_000_000;
 }
 
-function fetchNewMessages(lastSyncUnix) {
+function fetchNewMessages(lastSyncUnix, endUnix = null) {
   const lastAppleTs = toAppleTs(lastSyncUnix);
+  const endClause   = endUnix ? `AND m.date <= ${toAppleTs(endUnix)}` : '';
 
   return queryDb(`
     SELECT
@@ -89,6 +109,7 @@ function fetchNewMessages(lastSyncUnix) {
     LEFT JOIN handle h         ON m.handle_id = h.ROWID
     WHERE m.item_type = 0
       AND m.date > ${lastAppleTs}
+      ${endClause}
     ORDER BY m.date ASC
     LIMIT ${BATCH_SIZE}
   `);
@@ -115,21 +136,27 @@ async function pushMessages(serverUrl, token, messages) {
 async function main() {
   const cfg = loadConfig();
   const { serverUrl, token } = cfg;
-  let lastSync = cfg.lastSync || 0; // Unix timestamp
+  const args = parseArgs();
 
   if (!serverUrl || !token) {
     console.error('config.json is missing serverUrl or token. Run install.sh again.');
     process.exit(1);
   }
 
-  console.log(`[${new Date().toISOString()}] Starting sync from ${new Date(lastSync * 1000).toISOString()}`);
+  // Manual date range: use --from as start (or epoch 0), skip saving lastSync
+  const isManualRange = !!(args.from || args.to);
+  let latestDate = isManualRange ? (args.from || 0) : (cfg.lastSync || 0);
+  const endDate  = args.to || null;
+
+  const fromLabel = new Date(latestDate * 1000).toISOString().slice(0, 10);
+  const toLabel   = endDate ? new Date(endDate * 1000).toISOString().slice(0, 10) : 'now';
+  console.log(`[${new Date().toISOString()}] Syncing ${fromLabel} → ${toLabel}${isManualRange ? ' (manual range, lastSync unchanged)' : ''}`);
 
   let totalSynced = 0;
-  let latestDate  = lastSync;
 
   // Fetch in batches until caught up
   while (true) {
-    const rows = fetchNewMessages(latestDate);
+    const rows = fetchNewMessages(latestDate, endDate);
     if (!rows.length) break;
 
     // Map to server payload format
@@ -157,9 +184,11 @@ async function main() {
     // Advance the cursor by the max date in this batch
     latestDate = Math.max(...rows.map(r => r.date));
 
-    // Persist progress after each batch
-    cfg.lastSync = latestDate;
-    saveConfig(cfg);
+    // Only persist progress for regular incremental syncs
+    if (!isManualRange) {
+      cfg.lastSync = latestDate;
+      saveConfig(cfg);
+    }
 
     if (rows.length < BATCH_SIZE) break; // last batch
   }
