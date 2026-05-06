@@ -214,6 +214,7 @@ function getConversations(userId, labelId = null) {
     service_name:    r.service_name,
     last_text:       r.last_text || (r.cache_has_attachments ? '📎 Attachment' : ''),
     last_date:       r.last_date,
+    chat_identifier: r.chat_identifier,
     last_is_from_me: !!r.last_is_from_me,
     unread_count:    r.unread_count,
     labels:          labelsMap[r.chat_id] || [],

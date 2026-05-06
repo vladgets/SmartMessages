@@ -276,6 +276,13 @@
         <div id="thread-sub" class="text-xs text-gray-400 truncate"></div>
         <div id="thread-labels" class="flex flex-wrap gap-1 mt-0.5 empty:hidden"></div>
       </div>
+      <a id="reply-sms-btn" href="#" title="Reply in Messages"
+        class="hidden flex-shrink-0 w-8 h-8 items-center justify-center text-ios-blue hover:text-blue-600 rounded-full hover:bg-ios-bg transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
+        </svg>
+      </a>
       <div class="relative flex-shrink-0">
         <button id="label-picker-btn" onclick="toggleLabelPicker()" title="Labels"
           class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-full hover:bg-ios-bg transition-colors">
@@ -306,6 +313,17 @@
 <script>
 // ─── State ────────────────────────────────────────────────────────────────────
 const state = { conversations: [], filtered: [], activeChatId: null, labels: [], activeLabelId: null };
+
+// ─── SMS deep-link helpers ────────────────────────────────────────────────────
+function isSmsable(id) {
+  if (!id) return false;
+  const digits = id.replace(/\D/g, '');
+  return /^[+\d\s\-().]+$/.test(id) && digits.length >= 7;
+}
+
+function toSmsUri(id) {
+  return 'sms:' + (id.startsWith('+') ? '+' + id.slice(1).replace(/\D/g, '') : id.replace(/\D/g, ''));
+}
 
 // ─── Avatar helpers ───────────────────────────────────────────────────────────
 const COLORS = ['#FF3B30','#FF9500','#FFCC00','#34C759','#00C7BE','#30B0C7',
@@ -450,6 +468,15 @@ async function selectConv(chatId) {
   document.getElementById('message-list').innerHTML  =
     `<div class="flex items-center justify-center h-full text-gray-400 text-sm">Loading…</div>`;
   updateThreadHeaderLabels();
+  const replyBtn = document.getElementById('reply-sms-btn');
+  if (isSmsable(conv.chat_identifier)) {
+    replyBtn.href = toSmsUri(conv.chat_identifier);
+    replyBtn.classList.remove('hidden');
+    replyBtn.classList.add('flex');
+  } else {
+    replyBtn.classList.add('hidden');
+    replyBtn.classList.remove('flex');
+  }
   renderConversations();
   showThread();
   const msgs = await fetch(`/api/conversations/${chatId}/messages`).then(r => r.json());
@@ -475,6 +502,9 @@ function showSidebar() {
   document.getElementById('thread-panel').classList.add('hidden-mobile');
   document.getElementById('sidebar').classList.remove('hidden');
   state.activeChatId = null;
+  const replyBtn = document.getElementById('reply-sms-btn');
+  replyBtn.classList.add('hidden');
+  replyBtn.classList.remove('flex');
   renderConversations();
 }
 
