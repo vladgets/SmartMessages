@@ -6,5 +6,5 @@ services:
     startCommand: node server.js
     disk:
       name: data
-      mountPath: /opt/render/project/src/data
+      mountPath: /data
       sizeGB: 1

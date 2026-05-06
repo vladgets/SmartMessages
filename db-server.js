@@ -2,7 +2,7 @@ const Database = require('better-sqlite3');
 const crypto   = require('crypto');
 const path     = require('path');
 
-const DB_PATH = process.env.SERVER_DB_PATH || path.join(__dirname, 'data', 'server.db');
+const DB_PATH = process.env.SERVER_DB_PATH || (process.env.RENDER ? '/data/server.db' : path.join(__dirname, 'data', 'server.db'));
 
 let _db;
 function getDb() {
