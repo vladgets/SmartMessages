@@ -92,20 +92,39 @@ app.get('/api/download/sync-agent', requireSession, (req, res) => {
   const readme = `Smart Messages — Sync Agent
 ===========================
 
-Your sync agent is pre-configured and ready to install.
+Your sync agent is pre-configured with your account. No manual setup needed.
 
-Steps:
-  1. Open Terminal (search "Terminal" in Spotlight, or Cmd+Space → type Terminal)
-  2. In Terminal, type:  bash  (with a space after it)
-  3. Drag "install.sh" from this folder into the Terminal window
-  4. Press Enter — choose how often to sync, and you're done!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1 — Grant Full Disk Access to Terminal (one time)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The sync agent needs permission to read your Messages database.
 
-Messages will sync automatically in the background on every login.
+  1. Open System Settings → Privacy & Security → Full Disk Access
+  2. Click the lock icon to make changes
+  3. Click + and add Terminal (or whichever terminal app you use)
+  4. Toggle it ON
 
-Troubleshoot:
-  tail -f /tmp/smartmessages-sync.log
+You only need to do this once.
 
-Uninstall:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 2 — Choose how to sync
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Open Terminal (Cmd+Space → type "Terminal" → press Enter), then:
+
+Option A — Sync once (no installation):
+  In Terminal type:  bash  then a space, then drag "run-once.sh" here, press Enter.
+
+Option B — Sync automatically in background:
+  In Terminal type:  bash  then a space, then drag "install.sh" here, press Enter.
+  Choose how often you want messages to sync. Done!
+  Messages will sync automatically on every Mac login.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Troubleshoot / check sync is working:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  In Terminal: tail -f /tmp/smartmessages-sync.log
+
+To uninstall background sync:
   bash uninstall.sh
 `;
 
@@ -118,6 +137,7 @@ Uninstall:
   const agentDir = path.join(__dirname, 'sync-agent');
   archive.file(path.join(agentDir, 'index.js'),     { name: 'SmartMessages-SyncAgent/index.js' });
   archive.file(path.join(agentDir, 'install.sh'),   { name: 'SmartMessages-SyncAgent/install.sh' });
+  archive.file(path.join(agentDir, 'run-once.sh'),  { name: 'SmartMessages-SyncAgent/run-once.sh' });
   archive.file(path.join(agentDir, 'uninstall.sh'), { name: 'SmartMessages-SyncAgent/uninstall.sh' });
   archive.append(config,  { name: 'SmartMessages-SyncAgent/config.json' });
   archive.append(readme,  { name: 'SmartMessages-SyncAgent/README.txt' });
