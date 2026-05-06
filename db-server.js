@@ -22,6 +22,7 @@ function init() {
       username      TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       sync_token    TEXT UNIQUE NOT NULL,
+      is_admin      INTEGER DEFAULT 0,
       created_at    INTEGER DEFAULT (unixepoch())
     );
 
@@ -51,7 +52,14 @@ function init() {
 
     CREATE INDEX IF NOT EXISTS idx_msg_chat_date ON messages(chat_id, date);
     CREATE INDEX IF NOT EXISTS idx_msg_user_date ON messages(user_id, date);
+  `);
 
+  // Migration: add is_admin column to existing databases
+  try { db.exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0`); } catch {}
+  // First user created is always admin
+  db.exec(`UPDATE users SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM users)`);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS invites (
       id         INTEGER PRIMARY KEY,
       token      TEXT UNIQUE NOT NULL,
@@ -233,4 +241,10 @@ function redeemInvite(inviteToken, username, passwordHash) {
   })();
 }
 
-module.exports = { init, createUser, getUserByUsername, getUserById, getUserByToken, syncMessages, getConversations, getMessages, markChatRead, createInvite, getInvite, redeemInvite };
+function getUsers() {
+  return getDb().prepare(
+    `SELECT id, username, is_admin, created_at FROM users ORDER BY created_at ASC`
+  ).all();
+}
+
+module.exports = { init, createUser, getUserByUsername, getUserById, getUserByToken, syncMessages, getConversations, getMessages, markChatRead, createInvite, getInvite, redeemInvite, getUsers };

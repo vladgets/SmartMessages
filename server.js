@@ -25,6 +25,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 function requireSession(req, res, next) {
   if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+  req.effectiveUserId = req.session.impersonating || req.session.userId;
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = db.getUserById(req.session.userId);
+  if (!user?.is_admin) return res.status(403).json({ error: 'Forbidden' });
+  req.effectiveUserId = req.session.impersonating || req.session.userId;
   next();
 }
 
@@ -60,7 +69,13 @@ app.get('/api/auth/me', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   const user = db.getUserById(req.session.userId);
   if (!user) return res.status(401).json({ error: 'User not found' });
-  res.json({ id: user.id, username: user.username });
+  const impersonating = req.session.impersonating ? db.getUserById(req.session.impersonating) : null;
+  res.json({
+    id:           user.id,
+    username:     user.username,
+    isAdmin:      !!user.is_admin,
+    impersonating: impersonating ? { id: impersonating.id, username: impersonating.username } : null,
+  });
 });
 
 // ── Sync token ────────────────────────────────────────────────────────────────
@@ -180,16 +195,34 @@ app.get('/invite/:token', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  res.json(db.getUsers());
+});
+
+app.post('/api/admin/impersonate/:userId', requireAdmin, (req, res) => {
+  const target = db.getUserById(Number(req.params.userId));
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  req.session.impersonating = target.id;
+  res.json({ impersonating: { id: target.id, username: target.username } });
+});
+
+app.post('/api/admin/exit', requireAdmin, (req, res) => {
+  req.session.impersonating = null;
+  res.json({ status: 'ok' });
+});
+
 // ── Read endpoints ────────────────────────────────────────────────────────────
 
 app.get('/api/conversations', requireSession, (req, res) => {
-  res.json(db.getConversations(req.session.userId));
+  res.json(db.getConversations(req.effectiveUserId));
 });
 
 app.get('/api/conversations/:chatId/messages', requireSession, (req, res) => {
   const chatId = Number(req.params.chatId);
-  db.markChatRead(req.session.userId, chatId);
-  res.json(db.getMessages(req.session.userId, chatId));
+  db.markChatRead(req.effectiveUserId, chatId);
+  res.json(db.getMessages(req.effectiveUserId, chatId));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
