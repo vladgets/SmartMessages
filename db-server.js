@@ -311,9 +311,12 @@ function redeemInvite(inviteToken, username, passwordHash) {
 }
 
 function getUsers() {
-  return getDb().prepare(
-    `SELECT id, username, is_admin, created_at FROM users ORDER BY created_at ASC`
-  ).all();
+  return getDb().prepare(`
+    SELECT u.id, u.username, u.is_admin, u.created_at,
+      (SELECT COUNT(*) FROM chats c WHERE c.user_id = u.id) AS chat_count,
+      (SELECT COUNT(*) FROM messages m WHERE m.user_id = u.id) AS message_count
+    FROM users u ORDER BY u.created_at ASC
+  `).all();
 }
 
 module.exports = { init, createUser, getUserByUsername, getUserById, getUserByToken, syncMessages, getConversations, getMessages, markChatRead, createInvite, getInvite, redeemInvite, getUsers, getLabels, createLabel, deleteLabel, setChatLabels };
